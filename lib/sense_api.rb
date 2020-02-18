@@ -6,6 +6,7 @@ require 'eventmachine'
 require 'websocket/eventmachine/client'
 
 class SenseApi
+  BASE_URL = 'https://api.sense.com/apiservice/api/v1'
   attr_accessor :email, :password, :token, :monitors, :user_id, :account_id
 
   class SenseApiError < StandardError; end
@@ -19,8 +20,12 @@ class SenseApi
     login! unless token
   end
 
-  def fetch(url, depth = 0)
-    uri = URI(url)
+  def timeline
+    fetch("users/#{user_id}/timeline")
+  end
+
+  def fetch(path, depth = 0)
+    uri = URI(URI.join(BASE_URL, path))
     req = Net::HTTP::Get.new(uri)
 
     req['Authorization'] = "bearer #{token}"
@@ -47,11 +52,7 @@ class SenseApi
     end
   end
 
-  def first_monitor_id
-    monitors.first["id"]
-  end
-
-  def realtime(monitor_id = first_monitor_id)
+  def realtime(monitor_id)
     raise ArgumentError, "block required" unless block_given?
 
     exiting = false
@@ -102,7 +103,7 @@ class SenseApi
       json = JSON.parse(res.body)
       if json["authorized"]
         self.token = json["access_token"]
-        self.monitors = json["monitors"]
+        self.monitors = build_monitors(json["monitors"])
         self.account_id = json["account_id"]
         self.user_id = json["user_id"]
       else
@@ -111,5 +112,9 @@ class SenseApi
     else
       raise SenseApiError, "Error: #{res.value}" 
     end
+  end
+
+  def build_monitors(monitors_json)
+    monitors_json.map{|json| SenseApi::Monit.new(json, self)}
   end
 end
